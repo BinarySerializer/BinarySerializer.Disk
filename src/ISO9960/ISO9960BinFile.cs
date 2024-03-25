@@ -42,6 +42,50 @@ namespace BinarySerializer.Disk.ISO9960
             return s.SerializeObjectArrayUntil<Sector<T>>(obj, conditionCheckFunc, name: name);
         }
 
+        public Directory GetDirectory(string dirPath, bool throwOnError)
+        {
+            if (dirPath == null)
+                throw new ArgumentNullException(nameof(dirPath));
+
+            // Get the individual paths
+            string[] paths = dirPath.
+                Trim(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar).
+                Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+
+            // Default to root
+            int dirIndex = 0;
+            uint lba = PrimaryVolumeDescriptor.Root.ExtentLBA;
+
+            // Get the directory LBA
+            foreach (string dir in paths)
+            {
+                dirIndex = Array.FindIndex(PathTable.Object.Entries, x => x.ParentDirectoryIndex == dirIndex + 1 && x.DirectoryIdentifier == dir);
+
+                if (dirIndex == -1)
+                {
+                    if (throwOnError)
+                        throw new Exception($"Directory {dir} not found");
+                    else
+                        return null;
+                }
+
+                lba = PathTable.Object.Entries[dirIndex].ExtentLBA;
+            }
+
+            // Get the directory records to find the file
+            Directory directory = Directories.FirstOrDefault(x => x.Object.Entries.First().ExtentLBA == lba)?.Object;
+
+            if (directory == null)
+            {
+                if (throwOnError)
+                    throw new Exception($"Directory not found for LBA {lba}");
+                else
+                    return null;
+            }
+
+            return directory;
+        }
+
         public DirectoryRecord GetFile(string filePath, bool throwOnError)
         {
             if (filePath == null)
@@ -62,7 +106,7 @@ namespace BinarySerializer.Disk.ISO9960
 
             // Default to root
             int dirIndex = 0;
-            uint lba = PathTable.Object.Entries.First().ExtentLBA;
+            uint lba = PrimaryVolumeDescriptor.Root.ExtentLBA;
 
             // Get the directory LBA
             foreach (string dir in paths.Take(paths.Length - 1))
